@@ -64,8 +64,6 @@ def analyzeByLeague():
         leagues[bet.league].append(bet)
 
     return leagues
-
-# Tkinter app setup
 def create_app():
     root = tk.Tk()
     root.title("Bet Data Analysis")
@@ -88,7 +86,7 @@ def create_app():
     tree.pack(fill=tk.BOTH, expand=True)
 
     for col in columns:
-        tree.heading(col, text=col)
+        tree.heading(col, text=col, command=lambda col=col: sort_by_column(tree, col, False, columns))
 
     for league, bets in leagues.items():
         total_bets = len(bets)
@@ -121,6 +119,28 @@ def create_app():
     plot_button.pack()
 
     root.mainloop()
+
+def sort_by_column(tree, col, reverse, columns):
+    # Get all the items from the Treeview
+    items = [tree.item(item)["values"] for item in tree.get_children()]
+    
+    # Get the index of the column clicked
+    col_index = columns.index(col)
+
+    # Convert stake and gain columns to float for sorting, others remain as strings
+    def sort_key(item):
+        if col in ("Stake", "Gain"):
+            return float(item[col_index])  # Convert to float for sorting
+        return item[col_index]  # Default sorting behavior for non-numeric columns
+
+    items.sort(key=sort_key, reverse=reverse)
+
+    # Update the Treeview with sorted data
+    for i, item in enumerate(items):
+        tree.item(tree.get_children()[i], values=item)
+
+    # Toggle the sorting order
+    tree.heading(col, command=lambda _col=col: sort_by_column(tree, _col, not reverse, columns))
 
 # Run the app
 if __name__ == "__main__":
