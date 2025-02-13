@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bet Data Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1e1e1e;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+        .container {
+            max-width: 1200px;
+            margin: auto;
+            background: #2c2c2c;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+        }
+        h1 {
+            color: #f39c12;
+        }
+        details {
+            background: #333;
+            padding: 10px;
+            border-radius: 10px;
+            border: 1px solid #555;
+            margin-top: 20px;
+        }
+        summary {
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+            cursor: pointer;
+        }
+        .filters {
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+        select, input, button {
+            padding: 8px;
+            border-radius: 5px;
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #555;
+        }
+        button {
+            background-color: #e74c3c;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #c0392b;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #444;
+            padding: 10px;
+            text-align: center;
+        }
+        .won {
+            background-color: #2ecc71;
+        }
+        .lost {
+            background-color: #e74c3c;
+        }
+        .open {
+            background-color: #f1c40f;
+        }
+        .cashout {
+            background-color: #3498db;
+        }
+        canvas {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Bet Data Analysis</h1>
+
+        <details open>
+            <summary>All Bets</summary>
+            <div class="filters">
+                <select id="leagueFilter">
+                    <option value="">Select League</option>
+                </select>
+                <select id="teamFilter">
+                    <option value="">Select Team</option>
+                </select>
+                <select id="resultFilter">
+                    <option value="">Select Result</option>
+                    <option value="W">Won</option>
+                    <option value="L">Lost</option>
+                    <option value="O">Open</option>
+                    <option value="C">Cashout</option>
+                </select>
+                <input type="date" id="dateFilter" />
+                <button id="clearFiltersButton">Clear Filters</button>
+            </div>
+
+            <table id="betTable">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>League</th>
+                        <th>Team A</th>
+                        <th>Team B</th>
+                        <th>Bet</th>
+                        <th>Result</th>
+                        <th>Odds</th>
+                        <th>Stake</th>
+                        <th>Gain</th>
+                        <th>Win/Lose</th>
+                        <th>Total At Time</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </details>
+
+        <canvas id="betChart"></canvas>
+    </div>
+
+    <script>
+        const SHEET_URL = "https://docs.google.com/spreadsheets/d/1qdIxJxt7z-HuCqwLlI8Tv1Wt-tUXeFKWr_E7HF-tTXE/export?format=csv";
+        let bets = [];
+        let teamsByLeague = {};
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            const response = await fetch(SHEET_URL);
+            const text = await response.text();
+            const rows = text.split("\n").slice(2).map(row => row.split(","));
+            bets = rows.map(row => ({
+                date: row[0],
+                league: row[1],
+                teamA: row[2],
+                teamB: row[3],
+                bet: row[4],
+                result: row[5],
+                odds: parseFloat(row[6]),
+                stake: parseFloat(row[7]),
+                gain: parseFloat(row[8]),
+                winLose: row[9],
+                totalAtTime: parseFloat(row[10])
+            }));
+            
+            populateFilters(bets);
+            populateTable(bets);
+
+            document.getElementById("leagueFilter").addEventListener("change", handleLeagueChange);
+            document.getElementById("teamFilter").addEventListener("change", applyFilters);
+            document.getElementById("resultFilter").addEventListener("change", applyFilters);
+            document.getElementById("dateFilter").addEventListener("change", applyFilters);
+            document.getElementById("clearFiltersButton").addEventListener("click", clearFilters);
+        });
+
+        function populateFilters(bets) {
+            const leagues = [...new Set(bets.map(bet => bet.league))].sort();
+            populateSelect("leagueFilter", leagues);
+            
+            bets.forEach(bet => {
+                if (!teamsByLeague[bet.league]) teamsByLeague[bet.league] = new Set();
+                teamsByLeague[bet.league].add(bet.teamA);
+                teamsByLeague[bet.league].add(bet.teamB);
+            });
+
+            populateSelect("teamFilter", getAllTeams());
+        }
+
+        function populateSelect(id, options) {
+            const select = document.getElementById(id);
+            select.innerHTML = `<option value="">Select ${id.replace('Filter', '')}</option>`;
+            options.forEach(option => {
+                const opt = document.createElement("option");
+                opt.value = option;
+                opt.textContent = option;
+                select.appendChild(opt);
+            });
+        }
+
+        function handleLeagueChange() {
+            const selectedLeague = document.getElementById("leagueFilter").value;
+            populateSelect("teamFilter", selectedLeague ? Array.from(teamsByLeague[selectedLeague] || []) : getAllTeams());
+            applyFilters();
+        }
+
+        function getAllTeams() {
+            return [...new Set(bets.flatMap(bet => [bet.teamA, bet.teamB]))].sort();
+        }
+
+        function applyFilters() {
+            let filteredBets = bets;
+            const league = document.getElementById("leagueFilter").value;
+            const team = document.getElementById("teamFilter").value;
+            const result = document.getElementById("resultFilter").value;
+            const date = document.getElementById("dateFilter").value;
+
+            if (league) filteredBets = filteredBets.filter(bet => bet.league === league);
+            if (team) filteredBets = filteredBets.filter(bet => bet.teamA === team || bet.teamB === team);
+            if (result) filteredBets = filteredBets.filter(bet => bet.winLose === result);
+            if (date) filteredBets = filteredBets.filter(bet => bet.date === date);
+
+            populateTable(filteredBets);
+        }
+
+        function clearFilters() {
+            document.getElementById("leagueFilter").value = "";
+            document.getElementById("teamFilter").value = "";
+            document.getElementById("resultFilter").value = "";
+            document.getElementById("dateFilter").value = "";
+            populateSelect("teamFilter", getAllTeams());
+            populateTable(bets);
+        }
+
+        function getBetClass(winLose) {
+            switch (winLose) {
+                case "W": return "won";
+                case "L": return "lost";
+                case "O": return "open";
+                case "C": return "cashout";
+                default: return "";
+            }
+        }
+
+        function populateTable(bets) {
+            document.querySelector("#betTable tbody").innerHTML = bets.map(bet => 
+                `<tr class="${getBetClass(bet.winLose)}">${Object.values(bet).map(value => `<td>${value}</td>`).join("")}</tr>`
+            ).join("");
+        }
+    </script>
+</body>
+</html>
